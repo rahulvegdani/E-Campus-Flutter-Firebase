@@ -1,0 +1,98 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() { return request.auth != null; }
+    function userDoc() { return get(/databases/$(database)/documents/users/$(request.auth.uid)); }
+    function active() { return signedIn() && userDoc().data.active == true; }
+    function role(roleName) { return active() && userDoc().data.role == roleName; }
+    function staff() { return role('teacher') || role('admin'); }
+    function admin() { return role('admin'); }
+    function participant(conversationId) {
+      return active() && request.auth.uid in get(/databases/$(database)/documents/chat_conversations/$(conversationId)).data.participantUids;
+    }
+    function assignedToClass(department, semester, division, subjectId) {
+      return admin() || (role('teacher') && exists(/databases/$(database)/documents/teacher_assignments/$(request.auth.uid + '_' + subjectId + '_' + department + '_' + semester + '_' + division)));
+    }
+
+    match /authorized_users/{phoneKey} {
+      allow read: if admin() || (signedIn() && request.auth.token.phone_number == resource.data.phone);
+      allow write: if admin();
+    }
+
+    match /users/{uid} {
+      allow read: if active() && (request.auth.uid == uid || staff());
+      allow create: if signedIn() && request.auth.uid == uid && exists(/databases/$(database)/documents/authorized_users/$(request.auth.token.phone_number));
+      allow update: if admin() || (active() && request.auth.uid == uid
+        && request.resource.data.role == resource.data.role
+        && request.resource.data.active == resource.data.active);
+      allow delete: if admin();
+    }
+
+    match /notices/{noticeId} {
+      allow read: if active() && resource.data.published == true;
+      allow create: if staff() && request.resource.data.authorUid == request.auth.uid;
+      allow update, delete: if admin() || (role('teacher') && resource.data.authorUid == request.auth.uid);
+    }
+
+    match /timetable/{entryId} {
+      allow read: if active();
+      allow create, update, delete: if admin();
+    }
+
+    match /subjects/{subjectId} {
+      allow read: if active();
+      allow write: if admin();
+    }
+
+    match /teacher_assignments/{assignmentId} {
+      allow read: if active() && (admin() || resource.data.teacherUid == request.auth.uid);
+      allow write: if admin();
+    }
+
+    match /attendance_sessions/{sessionId} {
+      allow read: if admin() || (active() && resource.data.teacherUid == request.auth.uid) || (role('student') && exists(/databases/$(database)/documents/attendance_records/$(sessionId + '_' + request.auth.uid)));
+      allow create: if staff() && assignedToClass(request.resource.data.department, request.resource.data.semester, request.resource.data.division, request.resource.data.subjectId) && request.resource.data.teacherUid == request.auth.uid;
+      allow update: if admin() || (role('teacher') && resource.data.teacherUid == request.auth.uid);
+      allow delete: if admin();
+    }
+
+    match /attendance_records/{recordId} {
+      allow read: if active() && (resource.data.studentUid == request.auth.uid || admin() || (role('teacher') && resource.data.teacherUid == request.auth.uid));
+      allow create: if staff() && request.resource.data.teacherUid == request.auth.uid;
+      allow update: if admin() || (role('teacher') && resource.data.teacherUid == request.auth.uid);
+      allow delete: if admin();
+    }
+
+    match /library/{resourceId} {
+      allow read: if active();
+      allow create, update, delete: if staff();
+    }
+
+    match /buses/{busId} {
+      allow read: if active();
+      allow create, update, delete: if admin();
+    }
+
+    match /chat_conversations/{conversationId} {
+      allow read, update: if participant(conversationId);
+      allow create: if active() && request.auth.uid in request.resource.data.participantUids && request.resource.data.participantUids.size() == 2;
+      allow delete: if admin();
+      match /messages/{messageId} {
+        allow read: if participant(conversationId);
+        allow create: if participant(conversationId) && request.resource.data.senderUid == request.auth.uid;
+        allow update: if participant(conversationId) && resource.data.senderUid == request.auth.uid;
+        allow delete: if admin() || (participant(conversationId) && resource.data.senderUid == request.auth.uid);
+      }
+    }
+
+    match /ai_requests/{requestId} {
+      allow create: if active() && request.resource.data.uid == request.auth.uid;
+      allow read: if active() && resource.data.uid == request.auth.uid;
+      allow update, delete: if false;
+    }
+
+    match /device_tokens/{uid} {
+      allow read, write, delete: if active() && request.auth.uid == uid;
+    }
+  }
+}

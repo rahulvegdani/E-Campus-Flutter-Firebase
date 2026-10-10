@@ -1,0 +1,3 @@
+#!/bin/sh
+# Flutter/Android Studio can regenerate the wrapper if this script is missing executable metadata.
+exec gradle "$@"

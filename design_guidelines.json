@@ -1,0 +1,177 @@
+{
+  "app_name": "E-Campus",
+  "personality": "1 iOS-Native Clean",
+  "personality_one_liner": "A precise, serene iOS-native academic companion designed for frictionless daily campus life.",
+  "color": {
+    "surface": "#F9F8F6",
+    "onSurface": "#1A1A1A",
+    "surfaceSecondary": "#FFFFFF",
+    "onSurfaceSecondary": "#1A1A1A",
+    "surfaceTertiary": "#F0EEE9",
+    "onSurfaceTertiary": "#2C2C2C",
+    "surfaceInverse": "#141414",
+    "onSurfaceInverse": "#F9F8F6",
+    "brand": "#2E5B44",
+    "brandPrimary": "#2E5B44",
+    "onBrandPrimary": "#FFFFFF",
+    "brandSecondary": "#D4A373",
+    "onBrandSecondary": "#1A1A1A",
+    "brandTertiary": "#E7EFE9",
+    "onBrandTertiary": "#1B3B2B",
+    "success": "#386641",
+    "onSuccess": "#FFFFFF",
+    "warning": "#BC6C25",
+    "onWarning": "#FFFFFF",
+    "error": "#9B2226",
+    "onError": "#FFFFFF",
+    "info": "#457B9D",
+    "onInfo": "#FFFFFF",
+    "border": "#E2DFD8",
+    "borderStrong": "#C2BDB2",
+    "divider": "#EFECE6",
+    "muted": "#767676",
+    "onBrand": "#FFFFFF"
+  },
+  "typography": {
+    "displayFontFamily": "PlusJakartaSans",
+    "textFontFamily": "Geist",
+    "scale": {
+      "sm": 12,
+      "base": 14,
+      "lg": 16,
+      "xl": 20,
+      "2xl": 24
+    }
+  },
+  "spacing": {
+    "rule": "Generous vertical rhythm with safe area padding and comfortable card padding",
+    "xs": 4,
+    "sm": 8,
+    "md": 12,
+    "lg": 16,
+    "xl": 24,
+    "2xl": 32,
+    "3xl": 48
+  },
+  "radius_tokens": {
+    "sm": 6,
+    "md": 12,
+    "lg": 20,
+    "pill": 999
+  },
+  "shadow_tier": "1",
+  "navigation": "bottom_tabs",
+  "icon_set": "Phosphor",
+  "glassmorphism": {
+    "enabled": true,
+    "do's": [
+      "Use frosted glass on sticky headers and bottom tab bars",
+      "Apply translucent tinted base under foreground content"
+    ],
+    "dont's": [
+      "Never blur form fields or entire screens",
+      "Never stack multiple blur cards on top of each other"
+    ]
+  },
+  "platform_libraries": {
+    "glass": {
+      "ios": "expo-glass-effect",
+      "android": "expo-blur",
+      "low_end_android_fallback": "solid surfaceSecondary"
+    },
+    "image": "expo-image",
+    "blur": "expo-blur",
+    "bottom_sheet": "@gorhom/bottom-sheet",
+    "animation": "react-native-reanimated",
+    "gesture": "react-native-gesture-handler"
+  },
+  "screens": [
+    {
+      "name": "Auth",
+      "purpose": "Phone OTP verification and role selection for students, teachers, and admins.",
+      "states": {
+        "loading": "Authenticating credentials and verifying phone OTP code",
+        "empty": "Enter 10-digit phone number to receive OTP",
+        "error": "Invalid OTP code or network timeout. Please retry."
+      },
+      "layout": "Centered clean white card with botanical green accent button and clear input field."
+    },
+    {
+      "name": "HomeDashboard",
+      "purpose": "Central hub displaying role-specific daily schedule, attendance tracker, and quick notices.",
+      "states": {
+        "loading": "Loading timetable and active semester records...",
+        "empty": "No active classes or announcements today.",
+        "error": "Failed to sync campus data. Tap retry to reconnect."
+      },
+      "layout": "Single-column scrollable feed with top sticky frosted header, hero schedule card, and quick action grid."
+    },
+    {
+      "name": "Timetable",
+      "purpose": "Interactive weekly schedule of lectures, labs, and faculty office hours.",
+      "states": {
+        "loading": "Fetching schedule slots...",
+        "empty": "No classes scheduled for this day.",
+        "error": "Could not load timetable."
+      },
+      "layout": "Horizontal day selector pill bar followed by vertical timeline card stack."
+    },
+    {
+      "name": "Attendance",
+      "purpose": "Session-based attendance tracking with live check-in and monthly percentage breakdown.",
+      "states": {
+        "loading": "Calculating semester attendance logs...",
+        "empty": "No attendance sessions recorded yet.",
+        "error": "Unable to verify attendance records."
+      },
+      "layout": "Summary progress gauge at top followed by scrollable course attendance breakdown list."
+    },
+    {
+      "name": "ELibrary",
+      "purpose": "Digital repository of textbooks, journals, and lecture notes with instant search and download.",
+      "states": {
+        "loading": "Searching digital library catalog...",
+        "empty": "No library resources found matching your search.",
+        "error": "Failed to fetch library catalog."
+      },
+      "layout": "Search bar with category chips followed by 2-column book cover grid."
+    },
+    {
+      "name": "BusTracker",
+      "purpose": "Real-time campus shuttle routes, stop schedules, and live GPS tracking.",
+      "states": {
+        "loading": "Locating active campus buses...",
+        "empty": "No active bus routes at this hour.",
+        "error": "GPS tracking service unreachable."
+      },
+      "layout": "Interactive map representation header with route status cards below."
+    },
+    {
+      "name": "CampusChat",
+      "purpose": "Secure 1-to-1 direct messaging between students, teachers, and administration.",
+      "states": {
+        "loading": "Loading secure conversations...",
+        "empty": "No active chats. Start a conversation from your course directory.",
+        "error": "Chat synchronization failed."
+      },
+      "layout": "Conversation list with unread badges, leading avatar initials, and timestamp metadata."
+    },
+    {
+      "name": "AIAssistant",
+      "purpose": "Secure backend AI college assistant for academic guidance, syllabus queries, and campus info.",
+      "states": {
+        "loading": "AI Assistant is thinking...",
+        "empty": "Ask me anything about your timetable, library books, or campus policies.",
+        "error": "AI service temporarily unavailable."
+      },
+      "layout": "Chat interface with sticky bottom input bar and formatted markdown response cards."
+    }
+  ],
+  "images": {
+    "library_hero": {
+      "url": "https://images.unsplash.com/photo-1789654499268-b4b3576a8aa5?crop=entropy&cs=srgb&fm=jpg&ixlib=rb-4.1.0&q=85",
+      "alt": "Modern campus library interior with reading desks"
+    }
+  },
+  "instructions_to_main_agent": "Implement E-Campus mobile app with Flutter + Firebase (Firestore, Auth, Storage, FSM). Use iOS-Native Clean personality with botanical green and warm off-white palette. Ensure strict adherence to WCAG contrast, 44x44 touch targets, safe area compliance, and zero banned colors (indigo/navy). Every screen must have complete loading, empty, and error states."
+}
