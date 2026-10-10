@@ -10,6 +10,26 @@ class DataRepository {
   Stream<List<TimetableEntry>> timetable(UserProfile p) => db.collection('timetable').where('department', isEqualTo: p.department).where('semester', isEqualTo: p.semester).where('division', isEqualTo: p.division).snapshots().map((s) => s.docs.map(TimetableEntry.fromDoc).toList());
   Stream<List<TimetableEntry>> teacherTimetable(String uid) => db.collection('timetable').where('teacherUid', isEqualTo: uid).snapshots().map((s) => s.docs.map(TimetableEntry.fromDoc).toList());
   Stream<List<AttendanceSession>> teacherSessions(String uid) => db.collection('attendance_sessions').where('teacherUid', isEqualTo: uid).orderBy('dateKey', descending: true).limit(50).snapshots().map((s) => s.docs.map(AttendanceSession.fromDoc).toList());
+
+  Stream<List<AttendanceSession>> allSessions({int limit = 200}) => db.collection('attendance_sessions').orderBy('dateKey', descending: true).limit(limit).snapshots().map((s) => s.docs.map(AttendanceSession.fromDoc).toList());
+
+  Future<void> updateAttendanceRecord({required String recordId, required String newStatus, required String teacherUid, required String fromStatus}) async {
+    await db.collection('attendance_records').doc(recordId).update({
+      'status': newStatus,
+      'lastEditedBy': teacherUid,
+      'lastEditedAt': FieldValue.serverTimestamp(),
+      'editCount': FieldValue.increment(1),
+      'edits': FieldValue.arrayUnion([
+        {
+          'at': DateTime.now().toIso8601String(),
+          'by': teacherUid,
+          'from': fromStatus,
+          'to': newStatus,
+        },
+      ]),
+    });
+  }
+
   Stream<List<Map<String, dynamic>>> roster(UserProfile teacher, String department, String semester, String division) => db.collection('users').where('role', isEqualTo: 'student').where('active', isEqualTo: true).where('department', isEqualTo: department).where('semester', isEqualTo: semester).where('division', isEqualTo: division).orderBy('name').snapshots().map((s) => s.docs.map((d) => {'uid': d.id, ...d.data()}).toList());
   Stream<List<Map<String, dynamic>>> studentRecords(String uid) => db.collection('attendance_records').where('studentUid', isEqualTo: uid).orderBy('sessionDate', descending: true).limit(100).snapshots().map((s) => s.docs.map((d) => {'id': d.id, ...d.data()}).toList());
 

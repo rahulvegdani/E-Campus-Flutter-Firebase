@@ -375,6 +375,16 @@ class _SessionDetailSheetState extends ConsumerState<_SessionDetailSheet> {
   List<Map<String, dynamic>>? _records;
   bool _loading = true;
   String? _error;
+  bool _editing = false;
+  bool _saving = false;
+  final Map<String, bool> _draft = {}; // recordId -> isPresent after edit
+
+  bool get _canEdit => widget.session.teacherUid == widget.teacher.uid;
+  bool get _hasChanges => _draft.entries.any((e) {
+        final record = _records!.firstWhere((r) => r['id'] == e.key, orElse: () => {});
+        final original = record['status'] == 'present';
+        return original != e.value;
+      });
 
   @override
   void initState() {
@@ -388,6 +398,9 @@ class _SessionDetailSheetState extends ConsumerState<_SessionDetailSheet> {
       if (!mounted) return;
       setState(() {
         _records = data;
+        _draft
+          ..clear()
+          ..addEntries(data.map((r) => MapEntry(r['id'] as String, r['status'] == 'present')));
         _loading = false;
       });
     } catch (e) {
@@ -396,6 +409,51 @@ class _SessionDetailSheetState extends ConsumerState<_SessionDetailSheet> {
         _error = e.toString();
         _loading = false;
       });
+    }
+  }
+
+  Future<void> _saveChanges() async {
+    if (_saving || !_hasChanges) return;
+    setState(() => _saving = true);
+    final repo = ref.read(dataRepositoryProvider);
+    final changed = <Map<String, dynamic>>[];
+    for (final r in _records!) {
+      final id = r['id'] as String;
+      final newIsPresent = _draft[id] ?? (r['status'] == 'present');
+      final originalIsPresent = r['status'] == 'present';
+      if (newIsPresent != originalIsPresent) changed.add(r);
+    }
+    try {
+      for (final r in changed) {
+        final id = r['id'] as String;
+        final from = r['status'] as String? ?? 'absent';
+        final to = (_draft[id] ?? false) ? 'present' : 'absent';
+        await repo.updateAttendanceRecord(
+          recordId: id,
+          newStatus: to,
+          fromStatus: from,
+          teacherUid: widget.teacher.uid,
+        );
+        r['status'] = to;
+      }
+      if (!mounted) return;
+      setState(() {
+        _saving = false;
+        _editing = false;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            '${changed.length} record${changed.length == 1 ? '' : 's'} updated. Audit trail saved.',
+          ),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _saving = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Save failed: $e')),
+      );
     }
   }
 
@@ -471,6 +529,14 @@ class _SessionDetailSheetState extends ConsumerState<_SessionDetailSheet> {
                     ],
                   ),
                 ),
+                if (_canEdit && !_loading && _error == null && (_records ?? const []).isNotEmpty)
+                  TextButton.icon(
+                    onPressed: _saving
+                        ? null
+                        : () => setState(() => _editing = !_editing),
+                    icon: Icon(_editing ? Icons.lock_open_outlined : Icons.edit_outlined, size: 18),
+                    label: Text(_editing ? 'Cancel' : 'Edit'),
+                  ),
                 IconButton(
                   onPressed: () => Navigator.pop(context),
                   icon: const Icon(Icons.close),
@@ -480,9 +546,17 @@ class _SessionDetailSheetState extends ConsumerState<_SessionDetailSheet> {
             const SizedBox(height: 12),
             Row(
               children: [
-                _SessionStat(label: 'Present', value: s.presentCount.toString(), color: AppColors.success),
+                _SessionStat(
+                  label: 'Present',
+                  value: s.presentCount.toString(),
+                  color: AppColors.success,
+                ),
                 const SizedBox(width: 8),
-                _SessionStat(label: 'Absent', value: s.absentCount.toString(), color: AppColors.error),
+                _SessionStat(
+                  label: 'Absent',
+                  value: s.absentCount.toString(),
+                  color: AppColors.error,
+                ),
                 const SizedBox(width: 8),
                 _SessionStat(
                   label: 'Rate',
@@ -500,8 +574,10 @@ class _SessionDetailSheetState extends ConsumerState<_SessionDetailSheet> {
             else if (_error != null)
               Padding(
                 padding: const EdgeInsets.symmetric(vertical: 16),
-                child: Text('Could not load records: $_error',
-                    style: const TextStyle(color: AppColors.error)),
+                child: Text(
+                  'Could not load records: $_error',
+                  style: const TextStyle(color: AppColors.error),
+                ),
               )
             else if ((_records ?? const []).isEmpty)
               const _StateCard(text: 'No records found for this session.')
@@ -516,15 +592,47 @@ class _SessionDetailSheetState extends ConsumerState<_SessionDetailSheet> {
                   separatorBuilder: (_, __) => const Divider(height: 1, color: AppColors.divider),
                   itemBuilder: (_, i) {
                     final r = _records![i];
-                    final isPresent = r['status'] == 'present';
+                    final id = r['id'] as String;
+                    final originalIsPresent = r['status'] == 'present';
+                    final draftIsPresent = _draft[id] ?? originalIsPresent;
+                    final editsCount = (r['editCount'] as int?) ?? 0;
+                    final name = (r['studentName'] as String?) ?? 'Student';
+                    if (_editing) {
+                      final isDirty = draftIsPresent != originalIsPresent;
+                      return SwitchListTile(
+                        dense: true,
+                        value: draftIsPresent,
+                        onChanged: _saving
+                            ? null
+                            : (value) => setState(() => _draft[id] = value),
+                        title: Text(name),
+                        subtitle: Text(
+                          isDirty
+                              ? 'Changing to ${draftIsPresent ? "present" : "absent"}'
+                              : editsCount > 0
+                                  ? 'Previously edited $editsCount time${editsCount == 1 ? '' : 's'}'
+                                  : '',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: isDirty ? AppColors.warning : AppColors.muted,
+                          ),
+                        ),
+                      );
+                    }
                     return ListTile(
                       dense: true,
                       leading: Icon(
-                        isPresent ? Icons.check_circle_outline : Icons.cancel_outlined,
-                        color: isPresent ? AppColors.success : AppColors.error,
+                        originalIsPresent ? Icons.check_circle_outline : Icons.cancel_outlined,
+                        color: originalIsPresent ? AppColors.success : AppColors.error,
                         size: 20,
                       ),
-                      title: Text((r['studentName'] as String?) ?? 'Student'),
+                      title: Text(name),
+                      subtitle: editsCount > 0
+                          ? Text(
+                              'Edited $editsCount time${editsCount == 1 ? '' : 's'}',
+                              style: const TextStyle(fontSize: 11, color: AppColors.muted),
+                            )
+                          : null,
                       trailing: Text(
                         ((r['status'] as String?) ?? '').toUpperCase(),
                         style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
@@ -534,22 +642,40 @@ class _SessionDetailSheetState extends ConsumerState<_SessionDetailSheet> {
                 ),
               ),
               const SizedBox(height: 16),
-              Row(
-                children: [
-                  Expanded(
-                    child: FilledButton.icon(
-                      onPressed: _copyCsv,
-                      icon: const Icon(Icons.copy_outlined),
-                      label: const Text('Copy CSV'),
+              if (_editing) ...[
+                FilledButton.icon(
+                  onPressed: _hasChanges && !_saving ? _saveChanges : null,
+                  icon: _saving
+                      ? const SizedBox.square(
+                          dimension: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                        )
+                      : const Icon(Icons.save_outlined, size: 18),
+                  label: Text(_saving ? 'Saving…' : 'Save changes'),
+                ),
+                const SizedBox(height: 6),
+                const Text(
+                  'Every edit is logged with your UID, timestamp, and before→after values on the attendance_records document.',
+                  style: TextStyle(color: AppColors.muted, fontSize: 11),
+                ),
+              ] else ...[
+                Row(
+                  children: [
+                    Expanded(
+                      child: FilledButton.icon(
+                        onPressed: _copyCsv,
+                        icon: const Icon(Icons.copy_outlined),
+                        label: const Text('Copy CSV'),
+                      ),
                     ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 6),
-              const Text(
-                'CSV columns: Student Name, Phone, Status, Session Date, Subject, Department, Semester, Division.',
-                style: TextStyle(color: AppColors.muted, fontSize: 11),
-              ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                const Text(
+                  'CSV columns: Student Name, Phone, Status, Session Date, Subject, Department, Semester, Division.',
+                  style: TextStyle(color: AppColors.muted, fontSize: 11),
+                ),
+              ],
             ],
           ],
         ),
@@ -805,7 +931,12 @@ class _LowAttendanceBannerState extends ConsumerState<_LowAttendanceBanner> {
       await Navigator.push(
         context,
         MaterialPageRoute(
-          builder: (_) => ConversationScreen(profile: widget.student, contact: mentor),
+          builder: (_) => ConversationScreen(
+            profile: widget.student,
+            contact: mentor,
+            initialDraft:
+                'Hello sir/ma\'am, my overall attendance has dropped to ${widget.overallPercent.toStringAsFixed(1)}%. Could you please help me plan a recovery? Thank you.',
+          ),
         ),
       );
     } catch (e) {
@@ -1267,9 +1398,10 @@ class ChatScreen extends ConsumerWidget {
 }
 
 class ConversationScreen extends ConsumerStatefulWidget {
-  const ConversationScreen({super.key, required this.profile, required this.contact});
+  const ConversationScreen({super.key, required this.profile, required this.contact, this.initialDraft = ''});
   final UserProfile profile;
   final Map<String, dynamic> contact;
+  final String initialDraft;
 
   @override
   ConsumerState<ConversationScreen> createState() => _ConversationScreenState();
@@ -1278,6 +1410,14 @@ class ConversationScreen extends ConsumerStatefulWidget {
 class _ConversationScreenState extends ConsumerState<ConversationScreen> {
   final input = TextEditingController();
   String? conversationId;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.initialDraft.isNotEmpty) {
+      input.text = widget.initialDraft;
+    }
+  }
 
   @override
   void dispose() {
