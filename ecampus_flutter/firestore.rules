@@ -35,7 +35,11 @@ service cloud.firestore {
     }
 
     match /users/{uid} {
-      allow read: if active() && (request.auth.uid == uid || staff());
+      // Campus directory: any authenticated, active, authorized user can read other
+      // profiles so chat contacts and mentor lookups work. Writes stay strictly
+      // owner- or admin-controlled below, and only name/email/photoUrl/updatedAt are
+      // self-editable — role, active, department, semester, division stay admin-only.
+      allow read: if active();
       allow create: if signedIn() && request.auth.uid == uid
         && authorizedPhoneRecord().data.active == true
         && request.resource.data.uid == uid

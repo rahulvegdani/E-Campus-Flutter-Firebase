@@ -9,10 +9,10 @@ DateTime? readDate(Object? value) {
 String dateKey(DateTime date) => '${date.year.toString().padLeft(4, '0')}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
 
 class UserProfile {
-  const UserProfile({required this.uid, required this.name, required this.phone, required this.role, required this.active, this.email = '', this.department = '', this.semester = '', this.division = '', this.photoUrl = ''});
-  final String uid, name, phone, role, email, department, semester, division, photoUrl;
+  const UserProfile({required this.uid, required this.name, required this.phone, required this.role, required this.active, this.email = '', this.department = '', this.semester = '', this.division = '', this.photoUrl = '', this.mentorUid = ''});
+  final String uid, name, phone, role, email, department, semester, division, photoUrl, mentorUid;
   final bool active;
-  factory UserProfile.fromMap(String uid, Map<String, dynamic> data) => UserProfile(uid: uid, name: data['name'] as String? ?? 'Campus member', phone: data['phone'] as String? ?? '', role: data['role'] as String? ?? 'student', active: data['active'] as bool? ?? false, email: data['email'] as String? ?? '', department: data['department'] as String? ?? '', semester: data['semester'] as String? ?? '', division: data['division'] as String? ?? '', photoUrl: data['photoUrl'] as String? ?? '');
+  factory UserProfile.fromMap(String uid, Map<String, dynamic> data) => UserProfile(uid: uid, name: data['name'] as String? ?? 'Campus member', phone: data['phone'] as String? ?? '', role: data['role'] as String? ?? 'student', active: data['active'] as bool? ?? false, email: data['email'] as String? ?? '', department: data['department'] as String? ?? '', semester: data['semester'] as String? ?? '', division: data['division'] as String? ?? '', photoUrl: data['photoUrl'] as String? ?? '', mentorUid: data['mentorUid'] as String? ?? '');
 }
 
 class Notice {

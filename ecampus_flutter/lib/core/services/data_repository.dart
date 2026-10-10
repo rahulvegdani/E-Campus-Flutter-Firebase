@@ -12,6 +12,36 @@ class DataRepository {
   Stream<List<AttendanceSession>> teacherSessions(String uid) => db.collection('attendance_sessions').where('teacherUid', isEqualTo: uid).orderBy('dateKey', descending: true).limit(50).snapshots().map((s) => s.docs.map(AttendanceSession.fromDoc).toList());
   Stream<List<Map<String, dynamic>>> roster(UserProfile teacher, String department, String semester, String division) => db.collection('users').where('role', isEqualTo: 'student').where('active', isEqualTo: true).where('department', isEqualTo: department).where('semester', isEqualTo: semester).where('division', isEqualTo: division).orderBy('name').snapshots().map((s) => s.docs.map((d) => {'uid': d.id, ...d.data()}).toList());
   Stream<List<Map<String, dynamic>>> studentRecords(String uid) => db.collection('attendance_records').where('studentUid', isEqualTo: uid).orderBy('sessionDate', descending: true).limit(100).snapshots().map((s) => s.docs.map((d) => {'id': d.id, ...d.data()}).toList());
+
+  Future<List<Map<String, dynamic>>> sessionRecords(String sessionId) async {
+    final snap = await db.collection('attendance_records').where('sessionId', isEqualTo: sessionId).get();
+    final records = snap.docs.map((d) => {'id': d.id, ...d.data()}).toList();
+    final uids = records.map((r) => r['studentUid'] as String? ?? '').where((u) => u.isNotEmpty).toSet().toList();
+    final nameLookup = <String, String>{};
+    for (var i = 0; i < uids.length; i += 10) {
+      final chunk = uids.sublist(i, i + 10 > uids.length ? uids.length : i + 10);
+      final users = await db.collection('users').where(FieldPath.documentId, whereIn: chunk).get();
+      for (final u in users.docs) {
+        nameLookup[u.id] = (u.data()['name'] as String?) ?? '';
+      }
+    }
+    for (final r in records) {
+      r['studentName'] = nameLookup[r['studentUid']] ?? r['studentName'] ?? r['studentUid'] ?? '';
+    }
+    records.sort((a, b) => (a['studentName'] as String).compareTo(b['studentName'] as String));
+    return records;
+  }
+
+  Future<Map<String, dynamic>?> findMentor(UserProfile student) async {
+    if (student.mentorUid.isNotEmpty) {
+      final doc = await db.collection('users').doc(student.mentorUid).get();
+      if (doc.exists) return {'uid': doc.id, ...doc.data()!};
+    }
+    if (student.department.isEmpty) return null;
+    final fallback = await db.collection('users').where('role', isEqualTo: 'teacher').where('active', isEqualTo: true).where('department', isEqualTo: student.department).limit(1).get();
+    if (fallback.docs.isEmpty) return null;
+    return {'uid': fallback.docs.first.id, ...fallback.docs.first.data()};
+  }
   Stream<List<LibraryResource>> library() => db.collection('library').orderBy('title').snapshots().map((s) => s.docs.map(LibraryResource.fromDoc).toList());
   Stream<List<BusRoute>> buses() => db.collection('buses').orderBy('name').snapshots().map((s) => s.docs.map(BusRoute.fromDoc).toList());
   Stream<List<Map<String, dynamic>>> contacts(String uid) => db.collection('users').where('active', isEqualTo: true).limit(100).snapshots().map((s) => s.docs.where((d) => d.id != uid).map((d) => {'uid': d.id, ...d.data()}).toList());

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -218,6 +219,7 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
                         '${session.date == null ? 'Date pending' : DateFormat.yMMMd().format(session.date!)}',
                       ),
                       trailing: Text('${session.percentage.toStringAsFixed(0)}%'),
+                      onTap: () => _showSessionSheet(context, session),
                     ),
                   );
                 }).toList(),
@@ -345,6 +347,244 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
 
   void _toast(String message) {
     if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  Future<void> _showSessionSheet(BuildContext context, AttendanceSession session) async {
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: AppColors.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (sheetContext) => _SessionDetailSheet(session: session, teacher: widget.profile),
+    );
+  }
+}
+
+class _SessionDetailSheet extends ConsumerStatefulWidget {
+  const _SessionDetailSheet({required this.session, required this.teacher});
+  final AttendanceSession session;
+  final UserProfile teacher;
+
+  @override
+  ConsumerState<_SessionDetailSheet> createState() => _SessionDetailSheetState();
+}
+
+class _SessionDetailSheetState extends ConsumerState<_SessionDetailSheet> {
+  List<Map<String, dynamic>>? _records;
+  bool _loading = true;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final data = await ref.read(dataRepositoryProvider).sessionRecords(widget.session.id);
+      if (!mounted) return;
+      setState(() {
+        _records = data;
+        _loading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _error = e.toString();
+        _loading = false;
+      });
+    }
+  }
+
+  String _escapeCsv(String value) {
+    final needsQuotes = value.contains(',') || value.contains('"') || value.contains('\n');
+    final escaped = value.replaceAll('"', '""');
+    return needsQuotes ? '"$escaped"' : escaped;
+  }
+
+  String _buildCsv(List<Map<String, dynamic>> records) {
+    final s = widget.session;
+    final dateString = s.date == null ? '' : s.date!.toIso8601String().substring(0, 10);
+    final buffer = StringBuffer(
+      'Student Name,Phone,Status,Session Date,Subject,Department,Semester,Division\n',
+    );
+    for (final r in records) {
+      final row = [
+        _escapeCsv((r['studentName'] as String?) ?? ''),
+        _escapeCsv((r['studentPhone'] as String?) ?? ''),
+        _escapeCsv(((r['status'] as String?) ?? '').toUpperCase()),
+        _escapeCsv(dateString),
+        _escapeCsv(s.subjectName),
+        _escapeCsv(s.department),
+        _escapeCsv(s.semester),
+        _escapeCsv(s.division),
+      ].join(',');
+      buffer.writeln(row);
+    }
+    return buffer.toString();
+  }
+
+  Future<void> _copyCsv() async {
+    if (_records == null || _records!.isEmpty) return;
+    final csv = _buildCsv(_records!);
+    await Clipboard.setData(ClipboardData(text: csv));
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Session CSV copied. Paste into Excel, Numbers, or Sheets.')),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final s = widget.session;
+    final insets = MediaQuery.of(context).viewInsets.bottom;
+    return SafeArea(
+      child: Padding(
+        padding: EdgeInsets.only(left: 20, right: 20, top: 20, bottom: 20 + insets),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        s.subjectName,
+                        style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        '${s.department} · Sem ${s.semester} · Div ${s.division}',
+                        style: const TextStyle(color: AppColors.muted, fontSize: 13),
+                      ),
+                      if (s.date != null)
+                        Text(
+                          DateFormat.yMMMd().format(s.date!),
+                          style: const TextStyle(color: AppColors.muted, fontSize: 13),
+                        ),
+                    ],
+                  ),
+                ),
+                IconButton(
+                  onPressed: () => Navigator.pop(context),
+                  icon: const Icon(Icons.close),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                _SessionStat(label: 'Present', value: s.presentCount.toString(), color: AppColors.success),
+                const SizedBox(width: 8),
+                _SessionStat(label: 'Absent', value: s.absentCount.toString(), color: AppColors.error),
+                const SizedBox(width: 8),
+                _SessionStat(
+                  label: 'Rate',
+                  value: '${s.percentage.toStringAsFixed(0)}%',
+                  color: AppColors.brand,
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            if (_loading)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 32),
+                child: Center(child: CircularProgressIndicator()),
+              )
+            else if (_error != null)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                child: Text('Could not load records: $_error',
+                    style: const TextStyle(color: AppColors.error)),
+              )
+            else if ((_records ?? const []).isEmpty)
+              const _StateCard(text: 'No records found for this session.')
+            else ...[
+              ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxHeight: MediaQuery.of(context).size.height * 0.45,
+                ),
+                child: ListView.separated(
+                  shrinkWrap: true,
+                  itemCount: _records!.length,
+                  separatorBuilder: (_, __) => const Divider(height: 1, color: AppColors.divider),
+                  itemBuilder: (_, i) {
+                    final r = _records![i];
+                    final isPresent = r['status'] == 'present';
+                    return ListTile(
+                      dense: true,
+                      leading: Icon(
+                        isPresent ? Icons.check_circle_outline : Icons.cancel_outlined,
+                        color: isPresent ? AppColors.success : AppColors.error,
+                        size: 20,
+                      ),
+                      title: Text((r['studentName'] as String?) ?? 'Student'),
+                      trailing: Text(
+                        ((r['status'] as String?) ?? '').toUpperCase(),
+                        style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
+                      ),
+                    );
+                  },
+                ),
+              ),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  Expanded(
+                    child: FilledButton.icon(
+                      onPressed: _copyCsv,
+                      icon: const Icon(Icons.copy_outlined),
+                      label: const Text('Copy CSV'),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 6),
+              const Text(
+                'CSV columns: Student Name, Phone, Status, Session Date, Subject, Department, Semester, Division.',
+                style: TextStyle(color: AppColors.muted, fontSize: 11),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SessionStat extends StatelessWidget {
+  const _SessionStat({required this.label, required this.value, required this.color});
+  final String label;
+  final String value;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 10),
+        decoration: BoxDecoration(
+          color: AppColors.card,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: AppColors.border),
+        ),
+        child: Column(
+          children: [
+            Text(
+              value,
+              style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: color),
+            ),
+            Text(label, style: const TextStyle(fontSize: 11, color: AppColors.muted)),
+          ],
+        ),
+      ),
+    );
   }
 }
 
@@ -491,6 +731,7 @@ class StudentAttendanceScreen extends ConsumerWidget {
               if (overallAtRisk || atRiskSubjects.isNotEmpty) ...[
                 const SizedBox(height: 16),
                 _LowAttendanceBanner(
+                  student: profile,
                   overallAtRisk: overallAtRisk,
                   overallPercent: percent,
                   atRiskSubjects: atRiskSubjects,
@@ -526,23 +767,62 @@ class StudentAttendanceScreen extends ConsumerWidget {
   }
 }
 
-class _LowAttendanceBanner extends StatelessWidget {
+class _LowAttendanceBanner extends ConsumerStatefulWidget {
   const _LowAttendanceBanner({
+    required this.student,
     required this.overallAtRisk,
     required this.overallPercent,
     required this.atRiskSubjects,
     required this.threshold,
   });
+  final UserProfile student;
   final bool overallAtRisk;
   final double overallPercent;
   final List<MapEntry<String, double>> atRiskSubjects;
   final double threshold;
 
   @override
+  ConsumerState<_LowAttendanceBanner> createState() => _LowAttendanceBannerState();
+}
+
+class _LowAttendanceBannerState extends ConsumerState<_LowAttendanceBanner> {
+  bool _busy = false;
+
+  Future<void> _openMentorChat() async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    try {
+      final mentor = await ref.read(dataRepositoryProvider).findMentor(widget.student);
+      if (!mounted) return;
+      if (mentor == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('No mentor is assigned yet. Please ask administration to set one.'),
+          ),
+        );
+        return;
+      }
+      await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => ConversationScreen(profile: widget.student, contact: mentor),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not reach your mentor: $e')),
+      );
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final title = overallAtRisk
-        ? 'Overall attendance is below ${threshold.toStringAsFixed(0)}%'
-        : '${atRiskSubjects.length} subject${atRiskSubjects.length == 1 ? '' : 's'} below ${threshold.toStringAsFixed(0)}%';
+    final title = widget.overallAtRisk
+        ? 'Overall attendance is below ${widget.threshold.toStringAsFixed(0)}%'
+        : '${widget.atRiskSubjects.length} subject${widget.atRiskSubjects.length == 1 ? '' : 's'} below ${widget.threshold.toStringAsFixed(0)}%';
     return Container(
       decoration: BoxDecoration(
         color: const Color(0xFFFDECEC),
@@ -570,11 +850,11 @@ class _LowAttendanceBanner extends StatelessWidget {
                         fontSize: 15,
                       ),
                     ),
-                    if (overallAtRisk)
+                    if (widget.overallAtRisk)
                       Padding(
                         padding: const EdgeInsets.only(top: 4),
                         child: Text(
-                          'You are at ${overallPercent.toStringAsFixed(1)}% overall. Please meet your mentor to plan a recovery.',
+                          'You are at ${widget.overallPercent.toStringAsFixed(1)}% overall. Please meet your mentor to plan a recovery.',
                           style: const TextStyle(color: AppColors.onSurface),
                         ),
                       ),
@@ -583,7 +863,7 @@ class _LowAttendanceBanner extends StatelessWidget {
               ),
             ],
           ),
-          if (atRiskSubjects.isNotEmpty) ...[
+          if (widget.atRiskSubjects.isNotEmpty) ...[
             const SizedBox(height: 12),
             const Text(
               'Subjects to focus on',
@@ -593,7 +873,7 @@ class _LowAttendanceBanner extends StatelessWidget {
             Wrap(
               spacing: 8,
               runSpacing: 8,
-              children: atRiskSubjects
+              children: widget.atRiskSubjects
                   .map(
                     (e) => Container(
                       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
@@ -616,8 +896,25 @@ class _LowAttendanceBanner extends StatelessWidget {
             ),
           ],
           const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: FilledButton.icon(
+                  onPressed: _busy ? null : _openMentorChat,
+                  icon: _busy
+                      ? const SizedBox.square(
+                          dimension: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                        )
+                      : const Icon(Icons.chat_bubble_outline, size: 18),
+                  label: const Text('Message mentor'),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
           const Text(
-            'Tip: 75% is the usual minimum to appear in examinations. Reach out to your mentor or class representative to catch up.',
+            'Tip: 75% is the usual minimum to appear in examinations. Your mentor can help you plan a recovery.',
             style: TextStyle(color: AppColors.muted, fontSize: 12),
           ),
         ],
