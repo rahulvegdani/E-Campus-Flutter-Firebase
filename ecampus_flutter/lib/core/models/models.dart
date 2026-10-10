@@ -24,9 +24,9 @@ class Notice {
 }
 
 class TimetableEntry {
-  const TimetableEntry({required this.id, required this.subject, required this.teacherName, required this.dayOfWeek, required this.startTime, required this.endTime, required this.room, this.department = '', this.semester = '', this.division = ''});
-  final String id, subject, teacherName, dayOfWeek, startTime, endTime, room, department, semester, division;
-  factory TimetableEntry.fromDoc(DocumentSnapshot<Map<String, dynamic>> doc) { final d = doc.data() ?? {}; return TimetableEntry(id: doc.id, subject: d['subjectName'] as String? ?? 'Class', teacherName: d['teacherName'] as String? ?? 'Faculty', dayOfWeek: d['dayOfWeek'] as String? ?? 'Monday', startTime: d['startTime'] as String? ?? '', endTime: d['endTime'] as String? ?? '', room: d['room'] as String? ?? 'TBA', department: d['department'] as String? ?? '', semester: d['semester'] as String? ?? '', division: d['division'] as String? ?? ''); }
+  const TimetableEntry({required this.id, required this.subject, required this.teacherName, required this.teacherUid, required this.dayOfWeek, required this.startTime, required this.endTime, required this.room, this.subjectId = '', this.department = '', this.semester = '', this.division = ''});
+  final String id, subject, teacherName, teacherUid, dayOfWeek, startTime, endTime, room, subjectId, department, semester, division;
+  factory TimetableEntry.fromDoc(DocumentSnapshot<Map<String, dynamic>> doc) { final d = doc.data() ?? {}; return TimetableEntry(id: doc.id, subject: d['subjectName'] as String? ?? 'Class', teacherName: d['teacherName'] as String? ?? 'Faculty', teacherUid: d['teacherUid'] as String? ?? '', dayOfWeek: d['dayOfWeek'] as String? ?? 'Monday', startTime: d['startTime'] as String? ?? '', endTime: d['endTime'] as String? ?? '', room: d['room'] as String? ?? 'TBA', subjectId: d['subjectId'] as String? ?? '', department: d['department'] as String? ?? '', semester: d['semester'] as String? ?? '', division: d['division'] as String? ?? ''); }
 }
 
 class AttendanceSession {

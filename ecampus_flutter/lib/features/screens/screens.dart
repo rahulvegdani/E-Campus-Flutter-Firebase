@@ -74,13 +74,38 @@ class AttendanceScreen extends ConsumerStatefulWidget {
 }
 
 class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
-  String department = '';
-  String semester = '';
-  String division = '';
-  String subject = '';
+  final _deptCtrl = TextEditingController();
+  final _semCtrl = TextEditingController();
+  final _divCtrl = TextEditingController();
+  final _subjCtrl = TextEditingController();
+  String _subjectId = '';
   Map<String, bool> statuses = {};
   List<Map<String, dynamic>> roster = [];
   bool busy = false;
+
+  @override
+  void dispose() {
+    _deptCtrl.dispose();
+    _semCtrl.dispose();
+    _divCtrl.dispose();
+    _subjCtrl.dispose();
+    super.dispose();
+  }
+
+  void _applyTimetableEntry(TimetableEntry entry) {
+    setState(() {
+      _deptCtrl.text = entry.department;
+      _semCtrl.text = entry.semester;
+      _divCtrl.text = entry.division;
+      _subjCtrl.text = entry.subject;
+      _subjectId = entry.subjectId.isNotEmpty
+          ? entry.subjectId
+          : entry.subject.toLowerCase().replaceAll(' ', '_');
+      roster = [];
+      statuses = {};
+    });
+    _toast('Prefilled from timetable. Load the roster to continue.');
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -103,20 +128,32 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
             },
           ),
           const SizedBox(height: 24),
+          StreamBuilder<List<TimetableEntry>>(
+            stream: repo.teacherTimetable(widget.profile.uid),
+            builder: (context, snapshot) {
+              final entries = snapshot.data ?? const <TimetableEntry>[];
+              if (entries.isEmpty) return const SizedBox.shrink();
+              return _TimetablePrefillCard(
+                entries: entries,
+                onApply: _applyTimetableEntry,
+              );
+            },
+          ),
+          const SizedBox(height: 24),
           const Text(
             'Start a verified lecture session',
             style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700),
           ),
           const SizedBox(height: 8),
           const Text(
-            'Select the assigned class, load its active roster, and submit one auditable session.',
+            'Pick an assigned class below, load its active roster, and submit one auditable session.',
             style: TextStyle(color: AppColors.muted),
           ),
           const SizedBox(height: 24),
-          _field('Department', (v) => department = v),
-          _field('Semester', (v) => semester = v),
-          _field('Division', (v) => division = v),
-          _field('Subject ID / name', (v) => subject = v),
+          _controllerField(_deptCtrl, 'Department'),
+          _controllerField(_semCtrl, 'Semester'),
+          _controllerField(_divCtrl, 'Division'),
+          _controllerField(_subjCtrl, 'Subject ID / name'),
           const SizedBox(height: 8),
           FilledButton.icon(
             onPressed: busy ? null : _loadRoster,
@@ -192,11 +229,11 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
     );
   }
 
-  Widget _field(String label, ValueChanged<String> onChanged) {
+  Widget _controllerField(TextEditingController controller, String label) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: TextField(
-        onChanged: onChanged,
+        controller: controller,
         decoration: InputDecoration(
           labelText: label,
           prefixIcon: const Icon(Icons.tune_outlined),
@@ -206,7 +243,11 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
   }
 
   Future<void> _loadRoster() async {
-    if ([department, semester, division, subject].any((e) => e.trim().isEmpty)) {
+    final department = _deptCtrl.text.trim();
+    final semester = _semCtrl.text.trim();
+    final division = _divCtrl.text.trim();
+    final subject = _subjCtrl.text.trim();
+    if ([department, semester, division, subject].any((e) => e.isEmpty)) {
       _toast('Complete all class fields first.');
       return;
     }
@@ -214,9 +255,9 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
     try {
       final stream = ref.read(dataRepositoryProvider).roster(
             widget.profile,
-            department.trim(),
-            semester.trim(),
-            division.trim(),
+            department,
+            semester,
+            division,
           );
       final result = await stream.first;
       setState(() {
@@ -234,12 +275,16 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
   Future<void> _submit() async {
     setState(() => busy = true);
     try {
+      final subject = _subjCtrl.text.trim();
+      final subjectId = _subjectId.isNotEmpty
+          ? _subjectId
+          : subject.toLowerCase().replaceAll(' ', '_');
       await ref.read(dataRepositoryProvider).submitAttendance(
             teacher: widget.profile,
-            department: department,
-            semester: semester,
-            division: division,
-            subjectId: subject.toLowerCase().replaceAll(' ', '_'),
+            department: _deptCtrl.text.trim(),
+            semester: _semCtrl.text.trim(),
+            division: _divCtrl.text.trim(),
+            subjectId: subjectId,
             subjectName: subject,
             roster: roster,
             statuses: statuses,
@@ -303,6 +348,79 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
   }
 }
 
+class _TimetablePrefillCard extends StatelessWidget {
+  const _TimetablePrefillCard({required this.entries, required this.onApply});
+  final List<TimetableEntry> entries;
+  final void Function(TimetableEntry) onApply;
+
+  @override
+  Widget build(BuildContext context) {
+    final sorted = [...entries]..sort((a, b) {
+        final day = a.dayOfWeek.compareTo(b.dayOfWeek);
+        if (day != 0) return day;
+        return a.startTime.compareTo(b.startTime);
+      });
+    final visible = sorted.take(3).toList();
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text(
+                  'Your assigned lectures',
+                  style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
+                ),
+                Text(
+                  '${entries.length} total',
+                  style: const TextStyle(color: AppColors.muted, fontSize: 12),
+                ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            const Text(
+              'Tap "Use this class" to prefill the form below.',
+              style: TextStyle(color: AppColors.muted, fontSize: 12),
+            ),
+            const SizedBox(height: 12),
+            ...visible.map(
+              (e) => Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            e.subject,
+                            style: const TextStyle(fontWeight: FontWeight.w600),
+                          ),
+                          Text(
+                            '${e.department} ${e.semester}-${e.division} · ${e.dayOfWeek} ${e.startTime}',
+                            style: const TextStyle(color: AppColors.muted, fontSize: 12),
+                          ),
+                        ],
+                      ),
+                    ),
+                    TextButton(
+                      onPressed: () => onApply(e),
+                      child: const Text('Use this class'),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Student attendance
 // ---------------------------------------------------------------------------
@@ -310,6 +428,8 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
 class StudentAttendanceScreen extends ConsumerWidget {
   const StudentAttendanceScreen({super.key, required this.profile});
   final UserProfile profile;
+
+  static const double _threshold = 75;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -323,6 +443,24 @@ class StudentAttendanceScreen extends ConsumerWidget {
           final records = snapshot.data!;
           final present = records.where((r) => r['status'] == 'present').length;
           final percent = records.isEmpty ? 0.0 : present * 100 / records.length;
+
+          final subjectTotals = <String, int>{};
+          final subjectPresent = <String, int>{};
+          for (final r in records) {
+            final name = (r['subjectName'] as String?)?.trim();
+            if (name == null || name.isEmpty) continue;
+            subjectTotals.update(name, (v) => v + 1, ifAbsent: () => 1);
+            if (r['status'] == 'present') {
+              subjectPresent.update(name, (v) => v + 1, ifAbsent: () => 1);
+            }
+          }
+          final atRiskSubjects = subjectTotals.entries
+              .map((e) => MapEntry(e.key, (subjectPresent[e.key] ?? 0) * 100 / e.value))
+              .where((e) => e.value < _threshold)
+              .toList()
+            ..sort((a, b) => a.value.compareTo(b.value));
+          final overallAtRisk = records.isNotEmpty && percent < _threshold;
+
           return ListView(
             children: [
               Card(
@@ -350,6 +488,15 @@ class StudentAttendanceScreen extends ConsumerWidget {
                   ),
                 ),
               ),
+              if (overallAtRisk || atRiskSubjects.isNotEmpty) ...[
+                const SizedBox(height: 16),
+                _LowAttendanceBanner(
+                  overallAtRisk: overallAtRisk,
+                  overallPercent: percent,
+                  atRiskSubjects: atRiskSubjects,
+                  threshold: _threshold,
+                ),
+              ],
               const SizedBox(height: 24),
               if (records.isEmpty)
                 const _StateCard(text: 'No attendance sessions recorded yet.')
@@ -374,6 +521,106 @@ class StudentAttendanceScreen extends ConsumerWidget {
             ],
           );
         },
+      ),
+    );
+  }
+}
+
+class _LowAttendanceBanner extends StatelessWidget {
+  const _LowAttendanceBanner({
+    required this.overallAtRisk,
+    required this.overallPercent,
+    required this.atRiskSubjects,
+    required this.threshold,
+  });
+  final bool overallAtRisk;
+  final double overallPercent;
+  final List<MapEntry<String, double>> atRiskSubjects;
+  final double threshold;
+
+  @override
+  Widget build(BuildContext context) {
+    final title = overallAtRisk
+        ? 'Overall attendance is below ${threshold.toStringAsFixed(0)}%'
+        : '${atRiskSubjects.length} subject${atRiskSubjects.length == 1 ? '' : 's'} below ${threshold.toStringAsFixed(0)}%';
+    return Container(
+      decoration: BoxDecoration(
+        color: const Color(0xFFFDECEC),
+        border: Border.all(color: AppColors.error.withOpacity(0.4)),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      padding: const EdgeInsets.all(20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Icon(Icons.warning_amber_rounded, color: AppColors.error),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.error,
+                        fontSize: 15,
+                      ),
+                    ),
+                    if (overallAtRisk)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 4),
+                        child: Text(
+                          'You are at ${overallPercent.toStringAsFixed(1)}% overall. Please meet your mentor to plan a recovery.',
+                          style: const TextStyle(color: AppColors.onSurface),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          if (atRiskSubjects.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            const Text(
+              'Subjects to focus on',
+              style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+            ),
+            const SizedBox(height: 6),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: atRiskSubjects
+                  .map(
+                    (e) => Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: AppColors.card,
+                        border: Border.all(color: AppColors.error.withOpacity(0.5)),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Text(
+                        '${e.key} · ${e.value.toStringAsFixed(0)}%',
+                        style: const TextStyle(
+                          color: AppColors.error,
+                          fontWeight: FontWeight.w600,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ),
+                  )
+                  .toList(),
+            ),
+          ],
+          const SizedBox(height: 12),
+          const Text(
+            'Tip: 75% is the usual minimum to appear in examinations. Reach out to your mentor or class representative to catch up.',
+            style: TextStyle(color: AppColors.muted, fontSize: 12),
+          ),
+        ],
       ),
     );
   }
