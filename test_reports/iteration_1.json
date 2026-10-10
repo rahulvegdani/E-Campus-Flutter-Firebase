@@ -1,0 +1,62 @@
+{
+  "summary": "Static source review of the standalone Flutter/Firebase project completed. Required files and credential-free configuration are present, but live Firebase, Flutter analysis, Android build, and OTP behavior could not run because the required SDKs and client configuration are unavailable.",
+  "backend_issues": {
+    "critical": [
+      {
+        "endpoint": "Firestore rules: /users/{uid} create",
+        "issue": "A signed-in phone user may create an active users profile with any role because create only checks that an authorized_users document exists; it does not require that document to be active or constrain role/active/phone to the authorized record. This can enable self-provisioning as admin/teacher.",
+        "priority": "CRITICAL"
+      },
+      {
+        "endpoint": "Firestore rules: /attendance_records/{recordId} create",
+        "issue": "Any active teacher can create attendance records for arbitrary students and classes when only teacherUid equality is checked; the teacher assignment constraint used for attendance_sessions is not applied to records.",
+        "priority": "HIGH"
+      }
+    ],
+    "minor": [
+      {
+        "endpoint": "Firestore rules: /attendance_sessions/{sessionId} update",
+        "issue": "Teacher updates are allowed for their own session without immutable-field checks, so teacher-owned session fields can be rewritten after submission."
+      }
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {
+        "flow": "FCM notification tap handling",
+        "issue": "NotificationService.configureTapHandling() is defined but never invoked, so notification-open deep navigation hooks are not configured.",
+        "affected_testIDs": []
+      }
+    ],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/ecampus_flutter/docs/test_report.md",
+    "/app/test_reports/iteration_1.json"
+  ],
+  "action_items": [
+    "Tighten /users create rules: require authorized_users phone match, active true, and copy/validate role and active server-side; do not allow client-selected privileged roles.",
+    "Apply teacher_assignments validation to attendance_records create/update and restrict immutable teacher/session/student fields.",
+    "Invoke configureTapHandling during app startup or authenticated notification setup.",
+    "On a machine with Flutter, Firebase CLI, Android SDK, and generated FlutterFire options, run flutter pub get, flutter analyze, flutter test, Android build, and live Firebase integration tests."
+  ],
+  "critical_code_review_comments": [
+    "firebase_options.dart is intentionally a throwing placeholder; the app cannot proceed beyond setup until FlutterFire configuration is generated.",
+    "No credentials were found in source; test_credentials.md is empty, so no auth test credentials exist for live OTP testing.",
+    "Static import/file inventory and JSON/Node syntax checks were previously documented as passing; no compiler or Firebase emulator validation was possible here."
+  ],
+  "updated_files": [
+    "/app/test_reports/iteration_1.json"
+  ],
+  "success_rate": {
+    "backend": "0% executed (static review only)",
+    "frontend": "N/A - explicitly not tested"
+  },
+  "seed_data_creation": "None",
+  "retest_needed": true,
+  "should_call_test_agent_after_fix": true,
+  "context_for_next_testing_agent": "Review only covered /app/ecampus_flutter. Do not use the existing Expo app. Required Flutter/Dart/Firebase tooling and Firebase client credentials remain unavailable.",
+  "rca_of_issue": "The primary authorization flaw is in the Firestore create rule rather than the UI: the client reads authorized_users and writes a role-bearing users document, while rules validate only document existence. A malicious authenticated phone client can bypass the intended AuthScreen checks and submit a privileged profile directly. Attendance record rules similarly omit the assignment predicate enforced for sessions."
+}

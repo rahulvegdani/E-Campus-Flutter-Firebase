@@ -24,7 +24,7 @@ class DataRepository {
     final batch = db.batch();
     final present = statuses.values.where((v) => v).length;
     batch.set(sessionRef, {'teacherUid': teacher.uid, 'department': department, 'semester': semester, 'division': division, 'subjectId': subjectId, 'subjectName': subjectName, 'date': Timestamp.now(), 'dateKey': dateKey(DateTime.now()), 'startTime': '', 'endTime': '', 'presentCount': present, 'absentCount': statuses.length - present, 'status': 'submitted', 'updatedAt': FieldValue.serverTimestamp()}, SetOptions(merge: true));
-    for (final student in roster) { final uid = student['uid'] as String; final record = db.collection('attendance_records').doc('${sessionRef.id}_$uid'); batch.set(record, {'sessionId': sessionRef.id, 'studentUid': uid, 'teacherUid': teacher.uid, 'sessionDate': dateKey(DateTime.now()), 'subjectId': subjectId, 'subjectName': subjectName, 'status': statuses[uid] == true ? 'present' : 'absent', 'updatedAt': FieldValue.serverTimestamp()}, SetOptions(merge: true)); }
+    for (final student in roster) { final uid = student['uid'] as String; final record = db.collection('attendance_records').doc('${sessionRef.id}_$uid'); batch.set(record, {'recordId': '${sessionRef.id}_$uid', 'sessionId': sessionRef.id, 'studentUid': uid, 'teacherUid': teacher.uid, 'department': department, 'semester': semester, 'division': division, 'sessionDate': dateKey(DateTime.now()), 'subjectId': subjectId, 'subjectName': subjectName, 'status': statuses[uid] == true ? 'present' : 'absent', 'updatedAt': FieldValue.serverTimestamp()}, SetOptions(merge: true)); }
     await batch.commit();
   }
 

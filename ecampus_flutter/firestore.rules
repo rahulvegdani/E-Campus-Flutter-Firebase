@@ -10,8 +10,15 @@ service cloud.firestore {
     function participant(conversationId) {
       return active() && request.auth.uid in get(/databases/$(database)/documents/chat_conversations/$(conversationId)).data.participantUids;
     }
+    function authorizedPhoneRecord() {
+      return get(/databases/$(database)/documents/authorized_users/$(request.auth.token.phone_number));
+    }
     function assignedToClass(department, semester, division, subjectId) {
       return admin() || (role('teacher') && exists(/databases/$(database)/documents/teacher_assignments/$(request.auth.uid + '_' + subjectId + '_' + department + '_' + semester + '_' + division)));
+    }
+    function activeStudentInClass(studentUid, department, semester, division) {
+      let student = get(/databases/$(database)/documents/users/$(studentUid)).data;
+      return student.role == 'student' && student.active == true && student.department == department && student.semester == semester && student.division == division;
     }
 
     match /authorized_users/{phoneKey} {
@@ -21,7 +28,12 @@ service cloud.firestore {
 
     match /users/{uid} {
       allow read: if active() && (request.auth.uid == uid || staff());
-      allow create: if signedIn() && request.auth.uid == uid && exists(/databases/$(database)/documents/authorized_users/$(request.auth.token.phone_number));
+      allow create: if signedIn() && request.auth.uid == uid
+        && authorizedPhoneRecord().data.active == true
+        && request.resource.data.uid == uid
+        && request.resource.data.phone == request.auth.token.phone_number
+        && request.resource.data.role == authorizedPhoneRecord().data.role
+        && request.resource.data.active == authorizedPhoneRecord().data.active;
       allow update: if admin() || (active() && request.auth.uid == uid
         && request.resource.data.role == resource.data.role
         && request.resource.data.active == resource.data.active);
@@ -52,14 +64,30 @@ service cloud.firestore {
     match /attendance_sessions/{sessionId} {
       allow read: if admin() || (active() && resource.data.teacherUid == request.auth.uid) || (role('student') && exists(/databases/$(database)/documents/attendance_records/$(sessionId + '_' + request.auth.uid)));
       allow create: if staff() && assignedToClass(request.resource.data.department, request.resource.data.semester, request.resource.data.division, request.resource.data.subjectId) && request.resource.data.teacherUid == request.auth.uid;
-      allow update: if admin() || (role('teacher') && resource.data.teacherUid == request.auth.uid);
+      allow update: if admin() || (role('teacher') && resource.data.teacherUid == request.auth.uid
+        && request.resource.data.teacherUid == resource.data.teacherUid
+        && request.resource.data.department == resource.data.department
+        && request.resource.data.semester == resource.data.semester
+        && request.resource.data.division == resource.data.division
+        && request.resource.data.subjectId == resource.data.subjectId
+        && request.resource.data.subjectName == resource.data.subjectName
+        && request.resource.data.dateKey == resource.data.dateKey);
       allow delete: if admin();
     }
 
     match /attendance_records/{recordId} {
       allow read: if active() && (resource.data.studentUid == request.auth.uid || admin() || (role('teacher') && resource.data.teacherUid == request.auth.uid));
-      allow create: if staff() && request.resource.data.teacherUid == request.auth.uid;
-      allow update: if admin() || (role('teacher') && resource.data.teacherUid == request.auth.uid);
+      allow create: if staff() && request.resource.data.teacherUid == request.auth.uid
+        && request.resource.data.recordId == request.resource.data.sessionId + '_' + request.resource.data.studentUid
+        && assignedToClass(request.resource.data.department, request.resource.data.semester, request.resource.data.division, request.resource.data.subjectId)
+        && activeStudentInClass(request.resource.data.studentUid, request.resource.data.department, request.resource.data.semester, request.resource.data.division);
+      allow update: if admin() || (role('teacher') && resource.data.teacherUid == request.auth.uid
+        && request.resource.data.teacherUid == resource.data.teacherUid
+        && request.resource.data.studentUid == resource.data.studentUid
+        && request.resource.data.sessionId == resource.data.sessionId
+        && request.resource.data.recordId == resource.data.recordId
+        && assignedToClass(request.resource.data.department, request.resource.data.semester, request.resource.data.division, request.resource.data.subjectId)
+        && activeStudentInClass(request.resource.data.studentUid, request.resource.data.department, request.resource.data.semester, request.resource.data.division));
       allow delete: if admin();
     }
 

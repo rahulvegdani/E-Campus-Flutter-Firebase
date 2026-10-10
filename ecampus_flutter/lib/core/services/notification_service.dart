@@ -13,8 +13,11 @@ class NotificationService {
   NotificationService(this.messaging, this.db);
   final FirebaseMessaging messaging;
   final FirebaseFirestore db;
+  bool _tapConfigured = false;
 
   void configureTapHandling() {
+    if (_tapConfigured) return;
+    _tapConfigured = true;
     FirebaseMessaging.onMessageOpenedApp.listen((message) {
       // The next app resume can use message.data['route'] for deep navigation.
       // Notification content is never trusted for authorization.
