@@ -43,7 +43,7 @@ firebase use e-campus-f025f
 firebase deploy --only firestore:rules,firestore:indexes,storage
 ```
 
-Do not make an administrator by editing the Flutter client. Seed the first administrator through a restricted operator process or Firebase Admin SDK script kept outside source control.
+Do not make an administrator by editing the Flutter client. Seed the first administrator through the included `scripts/seed_admin.js` helper, which runs offline on a trusted workstation using a Firebase Admin service-account key. See `scripts/README.md` for the exact PowerShell / bash commands.
 
 ## Run in Android Studio
 
@@ -82,7 +82,11 @@ The session-based attendance model is additive. Review `docs/data_model.md` and 
 
 - `firebase_options.dart` must be generated for the existing Firebase app.
 - Firebase Console must enable phone auth, Firestore, Storage, FCM, and Android fingerprints.
-- Initial authorized users and teaching assignments must be provisioned securely.
+- Initial authorized users and teaching assignments must be provisioned securely. Run `scripts/seed_admin.js` to create the first administrator.
 - Cloud Function deployment and `GEMINI_API_KEY` are required for the AI assistant.
 - Live GPS bus tracking is deliberately not fabricated; the app shows published routes/schedules and clearly reports when a tracking source is absent.
 - A real Flutter/Android build and Firebase integration test must be run on Windows; see `docs/test_report.md`.
+
+## Teacher weekly attendance analytics
+
+The teacher attendance screen and the staff home dashboard show a lightweight 7-day attendance trend built from the teacher's own `attendance_sessions` stream. No extra charting dependency is used — the bars are plain Flutter widgets, so there is nothing new to install.

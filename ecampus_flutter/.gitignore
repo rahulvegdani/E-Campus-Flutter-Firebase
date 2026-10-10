@@ -14,6 +14,9 @@ web/.dart_tool/
 firebase-adminsdk-*.json
 functions/.env*
 functions/node_modules/
+scripts/node_modules/
+scripts/.env*
+.env
 *.jks
 *.keystore
 lib/firebase_options.local.dart
