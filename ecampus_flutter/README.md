@@ -58,7 +58,7 @@ If Android Studio reports missing Gradle metadata, run `flutter create .` from t
 
 ## AI assistant
 
-The Flutter client writes a request to `ai_requests`; it never holds an AI key. Install and deploy the function after enabling billing/limits appropriate for the Firebase project:
+The Flutter client writes a request to `ai_requests`; it never holds an AI key. A sample `.env.example` is included at the project root as a reference for the operator who deploys the Cloud Function — it is **not** read by the Flutter client. Copy it to `.env` locally if useful, keep it out of source control, and set the real value through `firebase functions:secrets:set` as shown below. Install and deploy the function after enabling billing/limits appropriate for the Firebase project:
 
 ```powershell
 cd functions
