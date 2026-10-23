@@ -1,0 +1,215 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() { return request.auth != null; }
+    function userDoc() { return get(/databases/$(database)/documents/users/$(request.auth.uid)); }
+    function active() { return signedIn() && userDoc().data.get('active', userDoc().data.get('isActive', false)) == true; }
+    function role(roleName) { return active() && userDoc().data.role == roleName; }
+    function staff() { return role('teacher') || role('admin'); }
+    function admin() { return role('admin'); }
+    function participant(conversationId) {
+      return active() && request.auth.uid in get(/databases/$(database)/documents/chat_conversations/$(conversationId)).data.participantUids;
+    }
+    function authorizedPhoneRecord() {
+      return get(/databases/$(database)/documents/authorized_users/$(request.auth.token.phone_number));
+    }
+    function assignedToClass(department, semester, division, subjectId) {
+      return admin() || (role('teacher') && exists(/databases/$(database)/documents/teacher_assignments/$(request.auth.uid + '_' + subjectId + '_' + department + '_' + semester + '_' + division)));
+    }
+    function activeStudentInClass(studentUid, department, semester, division) {
+      let student = get(/databases/$(database)/documents/users/$(studentUid)).data;
+      return student.role == 'student' && student.get('active', student.get('isActive', false)) == true && student.department == department && student.semester == semester && student.division == division;
+    }
+    function matchingAttendanceSession(sessionId, teacherUid, department, semester, division, subjectId) {
+      let session = getAfter(/databases/$(database)/documents/attendance_sessions/$(sessionId)).data;
+      return session.teacherUid == teacherUid
+        && session.department == department
+        && session.semester == semester
+        && session.division == division
+        && session.subjectId == subjectId;
+    }
+
+    match /authorized_users/{phoneKey} {
+      allow read: if admin() || (signedIn() && request.auth.token.phone_number == resource.data.get('phone', resource.data.get('phoneNumber', '')));
+      allow write: if admin();
+    }
+
+    match /users/{uid} {
+      // Campus directory: any authenticated, active, authorized user can read other
+      // profiles so chat contacts and mentor lookups work. Writes stay strictly
+      // owner- or admin-controlled below, and only name/email/photoUrl/updatedAt are
+      // self-editable — role, active, department, semester, division stay admin-only.
+      allow read: if active();
+      allow create: if signedIn() && request.auth.uid == uid
+        && authorizedPhoneRecord().data.get('active', authorizedPhoneRecord().data.get('isActive', false)) == true
+        && request.resource.data.uid == uid
+        && request.resource.data.get('phone', request.resource.data.get('phoneNumber', '')) == request.auth.token.phone_number
+        && request.resource.data.role == authorizedPhoneRecord().data.role
+        && request.resource.data.get('active', request.resource.data.get('isActive', false)) == authorizedPhoneRecord().data.get('active', authorizedPhoneRecord().data.get('isActive', false));
+      allow update: if admin() || (active() && request.auth.uid == uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name', 'email', 'photoUrl', 'updatedAt']))
+        || (signedIn() && request.auth.uid == uid
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name', 'updatedAt', 'active', 'isActive', 'phone', 'phoneNumber'])
+          && request.resource.data.get('phone', request.resource.data.get('phoneNumber', '')) == request.auth.token.phone_number
+          && authorizedPhoneRecord().data.get('active', authorizedPhoneRecord().data.get('isActive', false)) == true
+          && request.resource.data.get('active', request.resource.data.get('isActive', false)) == true
+          && request.resource.data.role == resource.data.role);
+      allow delete: if admin();
+    }
+
+    function noticeGroupKey() {
+      let profile = userDoc().data;
+      return profile.get('department', '') + '|' + profile.get('semester', '') + '|' + profile.get('division', '');
+    }
+
+    match /notices/{noticeId} {
+      // Student queries must constrain published notices to either the
+      // all-students audience or the signed-in student's exact class group.
+      // Staff may read their own drafts; admins may manage all notices.
+      allow read: if active() && (
+        admin()
+        || (role('teacher') && resource.data.authorUid == request.auth.uid)
+        || (resource.data.published == true
+          && (
+            resource.data.get('audienceType', 'allStudents') == 'allStudents'
+            || (resource.data.get('audienceType', '') == 'groups'
+              && noticeGroupKey() in resource.data.get('targetGroupKeys', []))
+          ))
+      );
+
+      allow create: if staff()
+        && request.resource.data.authorUid == request.auth.uid
+        && request.resource.data.authorName is string
+        && request.resource.data.title is string
+        && request.resource.data.title.size() > 0
+        && request.resource.data.description is string
+        && request.resource.data.description.size() > 0
+        && request.resource.data.published is bool
+        && request.resource.data.audienceType in ['allStudents', 'groups']
+        && (request.resource.data.audienceType == 'allStudents'
+          || (request.resource.data.targetGroupKeys is list
+            && request.resource.data.targetGroupKeys.size() > 0));
+
+      allow update: if admin()
+        || (role('teacher')
+          && resource.data.authorUid == request.auth.uid
+          && request.resource.data.authorUid == resource.data.authorUid
+          && request.resource.data.authorRole == resource.data.authorRole
+          && request.resource.data.title is string
+          && request.resource.data.title.size() > 0
+          && request.resource.data.description is string
+          && request.resource.data.description.size() > 0
+          && request.resource.data.published is bool
+          && request.resource.data.audienceType in ['allStudents', 'groups']
+          && (request.resource.data.audienceType == 'allStudents'
+            || (request.resource.data.targetGroupKeys is list
+              && request.resource.data.targetGroupKeys.size() > 0)));
+      allow delete: if admin()
+        || (role('teacher') && resource.data.authorUid == request.auth.uid
+          && resource.data.published != true);
+    }
+
+    match /timetable/{entryId} {
+      allow read: if active();
+      allow create, update, delete: if admin();
+    }
+
+    match /subjects/{subjectId} {
+      allow read: if active();
+      allow write: if admin();
+    }
+
+    match /teacher_assignments/{assignmentId} {
+      allow read: if active() && (admin() || resource.data.teacherUid == request.auth.uid);
+      allow write: if admin();
+    }
+
+    match /attendance_sessions/{sessionId} {
+      allow read: if admin() || (active() && resource.data.teacherUid == request.auth.uid) || (role('student') && exists(/databases/$(database)/documents/attendance_records/$(sessionId + '_' + request.auth.uid)));
+      allow create: if staff() && assignedToClass(request.resource.data.department, request.resource.data.semester, request.resource.data.division, request.resource.data.subjectId) && request.resource.data.teacherUid == request.auth.uid;
+      allow update: if admin() || (role('teacher') && resource.data.teacherUid == request.auth.uid
+        && request.resource.data.teacherUid == resource.data.teacherUid
+        && request.resource.data.department == resource.data.department
+        && request.resource.data.semester == resource.data.semester
+        && request.resource.data.division == resource.data.division
+        && request.resource.data.subjectId == resource.data.subjectId
+        && request.resource.data.subjectName == resource.data.subjectName
+        && request.resource.data.dateKey == resource.data.dateKey);
+      allow delete: if admin();
+    }
+
+    match /attendance_records/{recordId} {
+      allow read: if active() && (resource.data.studentUid == request.auth.uid || admin() || (role('teacher') && resource.data.teacherUid == request.auth.uid));
+      allow create: if staff() && request.resource.data.teacherUid == request.auth.uid
+        && recordId == request.resource.data.recordId
+        && request.resource.data.recordId == request.resource.data.sessionId + '_' + request.resource.data.studentUid
+        && matchingAttendanceSession(request.resource.data.sessionId, request.resource.data.teacherUid, request.resource.data.department, request.resource.data.semester, request.resource.data.division, request.resource.data.subjectId)
+        && assignedToClass(request.resource.data.department, request.resource.data.semester, request.resource.data.division, request.resource.data.subjectId)
+        && activeStudentInClass(request.resource.data.studentUid, request.resource.data.department, request.resource.data.semester, request.resource.data.division);
+      allow update: if admin() || (role('teacher') && resource.data.teacherUid == request.auth.uid
+        && recordId == request.resource.data.recordId
+        && request.resource.data.teacherUid == resource.data.teacherUid
+        && request.resource.data.studentUid == resource.data.studentUid
+        && request.resource.data.sessionId == resource.data.sessionId
+        && request.resource.data.recordId == resource.data.recordId
+        && matchingAttendanceSession(request.resource.data.sessionId, request.resource.data.teacherUid, request.resource.data.department, request.resource.data.semester, request.resource.data.division, request.resource.data.subjectId)
+        && assignedToClass(request.resource.data.department, request.resource.data.semester, request.resource.data.division, request.resource.data.subjectId)
+        && activeStudentInClass(request.resource.data.studentUid, request.resource.data.department, request.resource.data.semester, request.resource.data.division));
+      allow delete: if admin();
+    }
+
+    match /library/{resourceId} {
+      allow read: if active();
+      allow create, update, delete: if staff();
+    }
+
+    match /buses/{busId} {
+      allow read: if active();
+      allow create, update, delete: if admin();
+    }
+
+    match /chat_conversations/{conversationId} {
+      // Firestore can verify this condition against the participantUids
+      // arrayContains query issued by the app.
+      // The app's arrayContains query already constrains participantUids.
+      // Avoid the redundant runtime type check, which can make query rule
+      // evaluation fail even when the query supplies the participant UID.
+      allow get, list: if signedIn()
+        && request.auth.uid in resource.data.participantUids;
+
+      // Updates require an active participant.
+      allow update: if participant(conversationId);
+
+      allow create: if active()
+        && request.resource.data.participantUids is list
+        && request.auth.uid in request.resource.data.participantUids
+        && request.resource.data.participantUids.size() == 2;
+
+      allow delete: if admin();
+
+      match /messages/{messageId} {
+        allow read: if participant(conversationId);
+
+        allow create: if participant(conversationId)
+          && request.resource.data.senderUid == request.auth.uid;
+
+        allow update: if participant(conversationId)
+          && resource.data.senderUid == request.auth.uid;
+
+        allow delete: if admin()
+          || (participant(conversationId)
+            && resource.data.senderUid == request.auth.uid);
+      }
+    }
+
+    match /ai_requests/{requestId} {
+      allow create: if active() && request.resource.data.uid == request.auth.uid;
+      allow read: if active() && resource.data.uid == request.auth.uid;
+      allow update, delete: if false;
+    }
+
+    match /device_tokens/{uid} {
+      allow read, write, delete: if active() && request.auth.uid == uid;
+    }
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "name": "ecampus-admin-seed",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Offline operator script that seeds the very first E-Campus administrator into Firestore.",
+  "bin": {
+    "ecampus-seed-admin": "./seed_admin.js"
+  },
+  "scripts": {
+    "seed": "node seed_admin.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "firebase-admin": "^12.7.0"
+  }
+}

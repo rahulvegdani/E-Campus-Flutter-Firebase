@@ -1,0 +1,22 @@
+E-CAMPUS SOURCE UPDATE
+
+This ZIP contains modified source/configuration files using paths relative to your existing project root.
+
+Apply it to the project folder you have been building:
+C:\Users\Lenovo\AndroidStudioProjects\E-Campus-Release-Candidate\E-Campus-Release-Candidate
+
+Extract the ZIP directly into that project folder and allow overwrite for the listed files. It does not include or replace android/, google-services.json, firebase_options.dart, pubspec.yaml, or your local Firebase configuration.
+
+Included changes:
+- Dashboard quick access tiles now navigate to Bus routes, Campus chat, AI assistant, and Notices.
+- Greeting changes based on time of day.
+- Profile edit for name/email and profile photo upload to Firebase Storage, using the existing storage rule path.
+- Admin search, role filter, edit user fields, and activate/deactivate actions.
+- User roster/contact/mentor queries align with isActive user documents.
+- Firestore composite index for teacher course roster query.
+
+After extracting, run from the project root:
+  dart format lib
+  flutter build apk --debug
+
+If you deploy Firestore indexes, deploy firestore.indexes.json with your existing Firebase project. Photo uploads require the existing Storage rules to allow profile_images/{uid}/{fileName}. This source update does not deploy Firebase rules or functions automatically.

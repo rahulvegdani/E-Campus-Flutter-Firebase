@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "208426396682",
+    "project_id": "e-campus-f025f",
+    "storage_bucket": "e-campus-f025f.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:208426396682:android:4e4d18ce0182b8029b43f3",
+        "android_client_info": {
+          "package_name": "com.ecampus.e_campus"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDcXQvfRJOjud9WC83Ls6_SJeiCQakoYMI"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
